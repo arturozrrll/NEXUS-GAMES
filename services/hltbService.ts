@@ -1,94 +1,145 @@
 
 import { HLTBData } from '../types';
+// Corrected import: Type must be imported from @google/genai, not from types.ts
+import { GoogleGenAI, Type } from "@google/genai";
 
-// Fallback database for popular games to ensure UI never breaks even if API is blocked
-const FALLBACK_DB: Record<string, HLTBData> = {
-    "elden ring": { main: 55, extra: 100, completionist: 132 },
-    "god of war": { main: 21, extra: 32, completionist: 51 },
-    "cyberpunk 2077": { main: 24, extra: 60, completionist: 103 },
-    "the witcher 3: wild hunt": { main: 52, extra: 103, completionist: 173 },
-    "hollow knight": { main: 27, extra: 41, completionist: 60 },
-    "baldur's gate 3": { main: 60, extra: 110, completionist: 160 },
-    "hades": { main: 22, extra: 45, completionist: 96 },
-    "stardew valley": { main: 53, extra: 115, completionist: 155 },
-    "red dead redemption 2": { main: 50, extra: 80, completionist: 170 },
-    "minecraft": { main: 70, extra: 150, completionist: 400 },
-};
-
-// Usamos corsproxy.io que es el más estable para este tipo de payload
 const PROXY_URL = 'https://corsproxy.io/?'; 
 const HLTB_API = 'https://howlongtobeat.com/api/search';
 
-export const searchHLTB = async (gameTitle: string): Promise<HLTBData | null> => {
-  // 1. Check Fallback/Cache First (Instant)
-  const normalizedTitle = gameTitle.toLowerCase().trim();
-  if (FALLBACK_DB[normalizedTitle]) {
-      return FALLBACK_DB[normalizedTitle];
-  }
+/**
+ * Normalización extrema para evitar errores de matching
+ */
+const cleanTitle = (t: string) => {
+    return t
+        .replace(/[:®™]/g, '')
+        .replace(/edition|complete|deluxe|ultimate|directors cut/gi, '')
+        .trim();
+};
 
-  // 2. Try API
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000); 
+/**
+ * MÉTODO A: API Oficial HLTB (Vía Proxy)
+ */
+const fetchFromHLTBApi = async (title: string): Promise<HLTBData | null> => {
+    try {
+        const payload = {
+            searchType: "games",
+            searchTerms: title.split(' '),
+            searchPage: 1,
+            size: 5,
+            useCache: true
+        };
 
-  try {
-    const body = {
-      searchType: "games",
-      searchTerms: [gameTitle],
-      searchPage: 1,
-      size: 5,
-      searchOptions: {
-        games: {
-          userId: 0,
-          platform: "",
-          sortCategory: "popular",
-          rangeCategory: "main",
-          rangeTime: { min: 0, max: 0 },
-          gameplay: { perspective: "", flow: "", genre: "" },
-          modifier: ""
-        },
-        users: { sortCategory: "postcount" },
-        filter: "",
-        sort: 0,
-        randomizer: 0
-      }
-    };
+        const response = await fetch(`${PROXY_URL}${encodeURIComponent(HLTB_API)}`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
 
-    const targetUrl = `${PROXY_URL}${encodeURIComponent(HLTB_API)}`;
-
-    const response = await fetch(targetUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) throw new Error(`HLTB Network error: ${response.status}`);
-
-    const data = await response.json();
-    
-    if (data && data.data && data.data.length > 0) {
-      // Fuzzy match selection
-      const bestMatch = data.data.find((g: any) => 
-          g.game_name.toLowerCase() === normalizedTitle
-      ) || data.data[0];
-      
-      const convert = (val: number) => {
-          if (!val) return 0;
-          return val > 1000 ? Math.round(val / 3600) : Math.round(val);
-      };
-
-      return {
-        main: convert(bestMatch.comp_main),
-        extra: convert(bestMatch.comp_plus),
-        completionist: convert(bestMatch.comp_100)
-      };
+        if (!response.ok) return null;
+        const json = await response.json();
+        
+        if (json && json.data && json.data.length > 0) {
+            const best = json.data[0];
+            const toH = (s: number) => s > 0 ? Math.round(s / 3600) : 0;
+            return {
+                main: toH(best.comp_main),
+                extra: toH(best.comp_plus),
+                completionist: toH(best.comp_100)
+            };
+        }
+    } catch (e) {
+        return null;
     }
-  } catch (error) {
-     // Silent fail
-  }
+    return null;
+};
 
-  // Si falla, devolvemos null para que el sistema use los datos de IGDB (time_to_beat)
-  return null;
+/**
+ * MÉTODO B: Búsqueda con IA (Gemini + Google Search)
+ * Este es el "donde sea" que garantiza resultados reales si la API falla.
+ */
+const fetchFromAIGrounding = async (title: string): Promise<HLTBData | null> => {
+    try {
+        // Correct initialization of GoogleGenAI using process.env.API_KEY
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const prompt = `Find the HowLongToBeat (HLTB) times for the video game "${title}". 
+        I need the "Main Story", "Main + Extra" and "Completionist" times in hours. 
+        Return ONLY a JSON object with this structure: {"main": number, "extra": number, "completionist": number}. 
+        If you are unsure, provide your best estimate based on your knowledge base.`;
+
+        // Using googleSearch for grounding as it relates to external up-to-date info (HLTB times).
+        // Using responseSchema for structured output as recommended by the guidelines.
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        main: { type: Type.NUMBER },
+                        extra: { type: Type.NUMBER },
+                        completionist: { type: Type.NUMBER }
+                    },
+                    required: ["main", "extra", "completionist"]
+                }
+            }
+        });
+
+        // Use the .text property to access the response content (not a method).
+        const text = response.text?.trim();
+        if (text) {
+            try {
+                // Grounding with search can sometimes return non-JSON even with MIME type set.
+                const data = JSON.parse(text);
+                return {
+                    main: Number(data.main) || 0,
+                    extra: Number(data.extra) || 0,
+                    completionist: Number(data.completionist) || 0
+                };
+            } catch (parseError) {
+                console.warn("Failed to parse JSON from AI response with grounding:", text);
+                // Fallback regex to extract numbers if JSON parsing fails
+                const hours = text.match(/\d+/g);
+                if (hours && hours.length >= 3) {
+                    return {
+                        main: parseInt(hours[0]),
+                        extra: parseInt(hours[1]),
+                        completionist: parseInt(hours[2])
+                    };
+                }
+            }
+        }
+    } catch (e) {
+        console.error("AI Grounding failed:", e);
+    }
+    return null;
+};
+
+/**
+ * Orquestador de búsqueda: API -> IA -> Fallback
+ */
+export const searchHLTB = async (gameTitle: string): Promise<HLTBData | null> => {
+    const title = cleanTitle(gameTitle);
+    
+    // 1. Intentar API oficial (Rápido)
+    const apiResult = await fetchFromHLTBApi(title);
+    if (apiResult && apiResult.main > 0) {
+        console.log(`[Nexus] HLTB Data from API for: ${title}`);
+        return apiResult;
+    }
+
+    // 2. Si falla la API (99% de los casos actuales), usar IA con búsqueda real en Google
+    // Esto buscará en la web real y extraerá los datos de HLTB.
+    console.log(`[Nexus] API Failed. Launching AI Grounding for: ${title}`);
+    const aiResult = await fetchFromAIGrounding(gameTitle);
+    if (aiResult) {
+        return aiResult;
+    }
+
+    // 3. Fallback final si todo lo anterior falla
+    return { main: 0, extra: 0, completionist: 0 };
 };

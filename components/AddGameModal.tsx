@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, X, Loader2, Plus, CheckCircle, AlertCircle, Calendar, Sparkles } from 'lucide-react';
+/* Added missing Sparkles icon to imports */
+import { Search, X, Loader2, Plus, CheckCircle, AlertCircle, Calendar, Database, Clock, Zap, Sparkles } from 'lucide-react';
 import { useGameContext } from '../store/GameContext';
 import { fetchMetadata, searchGlobalGames } from '../services/metadataService';
 import { GameMetadata, GameStatus, Platform } from '../types';
@@ -38,7 +39,7 @@ export const AddGameModal: React.FC = () => {
           const data = await searchGlobalGames(query);
           setResults(data);
         } catch (e: any) {
-          setErrorMsg("Error al conectar con el motor AI.");
+          setErrorMsg("Error al conectar con los servicios de IGDB.");
         } finally {
           setIsLoading(false);
         }
@@ -58,7 +59,7 @@ export const AddGameModal: React.FC = () => {
         const fullMeta = await fetchMetadata(gameId, partial?.title);
         setSelectedGame(fullMeta);
     } catch (e: any) {
-        setErrorMsg("Error cargando detalles del juego.");
+        setErrorMsg("Error cargando detalles desde IGDB.");
     } finally {
         setIsFetchingDetails(false);
     }
@@ -68,6 +69,7 @@ export const AddGameModal: React.FC = () => {
     if (selectedGame && selectedGame.id) {
         setIsAdding(true);
         const meta = selectedGame as GameMetadata;
+        // La sincronización de HLTB ahora ocurre internamente en addToLibrary de forma asíncrona
         await addToLibrary(meta.id, selectedStatus, selectedPlatform, meta);
         setIsAdding(false);
         closeAddModal();
@@ -98,9 +100,9 @@ export const AddGameModal: React.FC = () => {
         <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/5">
           <div>
             <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
-               Añadir Juego <Sparkles className="text-brand-primary" />
+               Añadir Juego <Database className="text-brand-primary" />
             </h2>
-            <p className="text-sm text-slate-400 font-medium">Motor: Nexus Discovery AI (Sin Proxies)</p>
+            <p className="text-sm text-slate-400 font-medium">Motor: IGDB v4 (Instantáneo)</p>
           </div>
           <button onClick={closeAddModal} className="p-3 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
             <X size={24} />
@@ -116,7 +118,7 @@ export const AddGameModal: React.FC = () => {
                             autoFocus
                             type="text" 
                             className="w-full bg-slate-900 border border-white/10 rounded-2xl py-4 pl-14 pr-4 text-white text-lg placeholder:text-slate-600 focus:outline-none focus:border-brand-primary/50 transition-all"
-                            placeholder="Nombre del juego..."
+                            placeholder="Buscar en IGDB..."
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                         />
@@ -132,7 +134,7 @@ export const AddGameModal: React.FC = () => {
                     {errorMsg ? (
                          <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-2xl text-center">
                             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-                            <h3 className="text-xl font-bold text-white mb-2">Fallo en la conexión</h3>
+                            <h3 className="text-xl font-bold text-white mb-2">Error de conexión</h3>
                             <p className="text-slate-400">{errorMsg}</p>
                         </div>
                     ) : (
@@ -169,8 +171,8 @@ export const AddGameModal: React.FC = () => {
                         <div className="absolute bottom-6 left-6 right-6 flex items-end gap-6">
                              <img src={selectedGame.coverUrl} className="w-24 h-32 object-cover rounded-lg shadow-2xl" />
                              <div className="mb-2">
-                                 <h3 className="text-2xl font-black text-white">{selectedGame.title}</h3>
-                                 <div className="flex gap-2 mt-2">
+                                 <h3 className="text-2xl font-black text-white leading-tight">{selectedGame.title}</h3>
+                                 <div className="flex flex-wrap gap-2 mt-2">
                                      {selectedGame.genres?.slice(0,2).map(g => (
                                          <span key={g} className="text-[10px] uppercase font-bold px-2 py-0.5 bg-white/10 rounded text-slate-300">{g}</span>
                                      ))}
@@ -179,10 +181,30 @@ export const AddGameModal: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex-1 p-8 space-y-6 overflow-y-auto">
+                    <div className="flex-1 p-8 space-y-6 overflow-y-auto custom-scrollbar">
+                        {/* HLTB Preview Section - Async Info */}
+                        <div className="bg-brand-primary/10 border border-brand-primary/20 p-4 rounded-2xl flex items-center justify-between animate-fade-in">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-brand-primary/20 rounded-lg text-brand-primary">
+                                    <Sparkles size={18} className="animate-pulse" />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-bold text-brand-primary uppercase tracking-widest">
+                                        Sincronización Inteligente
+                                    </p>
+                                    <p className="text-sm font-bold text-white">
+                                        Los tiempos (HLTB) se añadirán en segundo plano.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-brand-primary/20 px-2 py-1 rounded text-[10px] font-mono text-brand-primary font-bold">
+                                <Zap size={10} fill="currentColor" className="animate-bounce" /> AUTO-SYNC
+                            </div>
+                        </div>
+
                         <div className="space-y-6">
                             <div className="space-y-3">
-                                <label className="text-xs font-bold text-brand-primary uppercase tracking-wider">Estado en Colección</label>
+                                <label className="text-xs font-bold text-brand-primary uppercase tracking-wider">Estado inicial</label>
                                 <div className="grid grid-cols-2 gap-2">
                                     {Object.values(GameStatus).slice(0,6).map((status) => (
                                         <button
@@ -212,10 +234,10 @@ export const AddGameModal: React.FC = () => {
                         <button 
                             onClick={handleConfirm}
                             disabled={isAdding || isFetchingDetails}
-                            className="w-full py-4 bg-white text-black font-black text-lg rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="w-full py-4 bg-white text-black font-black text-lg rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-slate-200 transition-colors"
                         >
                             {isAdding ? <Loader2 className="animate-spin" size={24} /> : <Plus size={20} />}
-                            {isAdding ? 'Añadiendo...' : 'Añadir a mi Biblioteca'}
+                            {isAdding ? 'Añadiendo...' : 'Confirmar y Añadir'}
                         </button>
                     </div>
                 </div>

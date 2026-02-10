@@ -1,135 +1,103 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
 import { GameMetadata } from '../types';
 
-// Inicialización del motor de IA
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getClientId = () => localStorage.getItem('nexus_igdb_client_id') || '';
+const getToken = () => localStorage.getItem('nexus_igdb_token') || '';
 
-/**
- * Utility to safely parse JSON from AI response, handling potential markdown code blocks
- */
-const parseAIResponse = (text: string) => {
-  const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-  const cleanJson = jsonMatch ? jsonMatch[0] : text;
-  return JSON.parse(cleanJson);
+const PROXY_URL = 'https://corsproxy.io/?';
+const IGDB_BASE_URL = 'https://api.igdb.com/v4';
+
+const formatIgdbImage = (url: string | undefined, size: 't_cover_big' | 't_720p' | 't_screenshot_huge' = 't_cover_big') => {
+  if (!url) return 'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?q=80&w=900&auto=format&fit=crop';
+  const fullUrl = url.startsWith('http') ? url : `https:${url}`;
+  return fullUrl.replace('t_thumb', size);
 };
 
-/**
- * MOTOR DE DESCUBRIMIENTO NEXUS (AI-POWERED)
- * Sustituye a IGDB para evitar bloqueos de CORS y fallos de proxy.
- */
 export const searchGlobalGames = async (query: string): Promise<Partial<GameMetadata>[]> => {
   if (!query || query.length < 2) return [];
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Actúa como una base de datos maestra de videojuegos. 
-    Busca juegos que coincidan con: "${query}". 
-    Devuelve un array JSON de los 10 resultados más relevantes. 
-    Es CRÍTICO que el steamAppId sea correcto para obtener la carátula de Steam CDN.
-    Formato: [{ "id": number, "title": string, "releaseDate": "ISO", "platforms": [], "steamAppId": string }]`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.INTEGER, description: "Un ID numérico único aleatorio" },
-            title: { type: Type.STRING },
-            releaseDate: { type: Type.STRING, description: "Formato ISO 8601" },
-            platforms: { type: Type.ARRAY, items: { type: Type.STRING } },
-            steamAppId: { type: Type.STRING, description: "ID de Steam para la carátula" }
-          },
-          required: ["id", "title", "steamAppId"]
-        }
-      }
-    }
-  });
-
   try {
-    const data = parseAIResponse(response.text);
+    const targetUrl = `${IGDB_BASE_URL}/games`;
+    const body = `search "${query}"; fields name, cover.url, first_release_date, platforms.name; limit 10;`;
+
+    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`, {
+      method: 'POST',
+      headers: {
+        'Client-ID': getClientId(),
+        'Authorization': `Bearer ${getToken()}`,
+        'Content-Type': 'text/plain'
+      },
+      body
+    });
+
+    if (!response.ok) throw new Error(`IGDB Search Error: ${response.status}`);
+
+    const data = await response.json();
+    
     return data.map((g: any) => ({
-      ...g,
-      coverUrl: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.steamAppId}/library_600x900.jpg`,
-      bannerUrl: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.steamAppId}/header.jpg`
+      id: g.id,
+      title: g.name,
+      releaseDate: g.first_release_date ? new Date(g.first_release_date * 1000).toISOString() : undefined,
+      platforms: g.platforms?.map((p: any) => p.name) || [],
+      coverUrl: formatIgdbImage(g.cover?.url, 't_cover_big'),
+      bannerUrl: formatIgdbImage(g.cover?.url, 't_720p')
     }));
   } catch (e) {
-    console.error("Error parseando resultados de búsqueda AI", e);
+    console.error("Error en búsqueda IGDB:", e);
     return [];
   }
 };
 
 export const fetchMetadata = async (id: number, title?: string): Promise<GameMetadata> => {
-  const queryTitle = title || "Juego desconocido";
-  
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Genera metadatos detallados para el videojuego: "${queryTitle}".
-    Incluye sinopsis profesional, géneros, desarrolladores y tiempos de juego aproximados (HowLongToBeat style).
-    Asegúrate de encontrar el steamAppId real para la carátula.`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          title: { type: Type.STRING },
-          description: { type: Type.STRING },
-          releaseDate: { type: Type.STRING },
-          genres: { type: Type.ARRAY, items: { type: Type.STRING } },
-          platforms: { type: Type.ARRAY, items: { type: Type.STRING } },
-          developers: { type: Type.ARRAY, items: { type: Type.STRING } },
-          publishers: { type: Type.ARRAY, items: { type: Type.STRING } },
-          rating: { type: Type.NUMBER },
-          aggregatedRating: { type: Type.NUMBER },
-          steamAppId: { type: Type.STRING },
-          timeToBeat: {
-            type: Type.OBJECT,
-            properties: {
-              main: { type: Type.NUMBER },
-              extra: { type: Type.NUMBER },
-              completionist: { type: Type.NUMBER }
-            }
-          }
-        },
-        required: ["title", "description", "steamAppId", "timeToBeat"]
-      }
-    }
-  });
-
   try {
-    const data = parseAIResponse(response.text);
-    const steamId = data.steamAppId;
+    const targetUrl = `${IGDB_BASE_URL}/games`;
+    const body = `fields name, summary, cover.url, first_release_date, genres.name, involved_companies.developer, involved_companies.company.name, platforms.name, screenshots.url, aggregated_rating, rating, websites.url, websites.category; where id = ${id};`;
+
+    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`, {
+      method: 'POST',
+      headers: {
+        'Client-ID': getClientId(),
+        'Authorization': `Bearer ${getToken()}`,
+        'Content-Type': 'text/plain'
+      },
+      body
+    });
+
+    if (!response.ok) throw new Error(`IGDB Fetch Error: ${response.status}`);
+
+    const results = await response.json();
+    if (!results || results.length === 0) throw new Error("Juego no encontrado en IGDB");
     
+    const g = results[0];
+    
+    const developers = g.involved_companies?.filter((c: any) => c.developer)?.map((c: any) => c.company.name) || [];
+    const publishers = g.involved_companies?.filter((c: any) => !c.developer)?.map((c: any) => c.company.name) || [];
+    const steamWebsite = g.websites?.find((w: any) => w.category === 13);
+    const steamAppId = steamWebsite ? steamWebsite.url.split('/').filter(Boolean).pop() : undefined;
+
     return {
-      id: id || Math.floor(Math.random() * 1000000),
-      title: data.title,
-      slug: data.title.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-      coverUrl: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${steamId}/library_600x900.jpg`,
-      bannerUrl: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${steamId}/library_hero.jpg`,
-      description: data.description,
-      releaseDate: data.releaseDate || new Date().toISOString(),
-      genres: data.genres || [],
-      platforms: data.platforms || [],
-      developers: data.developers || [],
-      publishers: data.publishers || [],
-      rating: data.rating || 0,
-      aggregatedRating: data.aggregatedRating || data.rating || 0,
-      screenshots: [
-        `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${steamId}/ss_1.jpg`,
-        `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${steamId}/ss_2.jpg`,
-        `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${steamId}/ss_3.jpg`
-      ],
-      externalIds: { steam: steamId },
-      timeToBeat: data.timeToBeat,
+      id: g.id,
+      title: g.name,
+      slug: g.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+      coverUrl: formatIgdbImage(g.cover?.url, 't_cover_big'),
+      bannerUrl: g.screenshots?.[0] ? formatIgdbImage(g.screenshots[0].url, 't_720p') : formatIgdbImage(g.cover?.url, 't_720p'),
+      description: g.summary || 'Sin descripción disponible.',
+      releaseDate: g.first_release_date ? new Date(g.first_release_date * 1000).toISOString() : new Date().toISOString(),
+      genres: g.genres?.map((gen: any) => gen.name) || [],
+      platforms: g.platforms?.map((p: any) => p.name) || [],
+      developers: developers.length > 0 ? developers : ['Desconocido'],
+      publishers: publishers.length > 0 ? publishers : ['Desconocido'],
+      rating: g.rating || 0,
+      aggregatedRating: g.aggregated_rating || g.rating || 0,
+      screenshots: g.screenshots?.slice(0, 4).map((s: any) => formatIgdbImage(s.url, 't_720p')) || [],
+      externalIds: { igdb: g.id.toString(), steam: steamAppId },
+      steamAppId: steamAppId ? parseInt(steamAppId) : undefined,
+      // Tiempos vacíos inicialmente para no bloquear la carga
+      timeToBeat: { main: 0, extra: 0, completionist: 0 },
       lastSyncedAt: Date.now()
     };
   } catch (e) {
     console.error("Fetch Metadata Error:", e);
-    throw new Error("No se pudieron generar los metadatos del juego.");
+    throw new Error("No se pudieron obtener los datos de IGDB.");
   }
-};
-
-export const validateIgdbCredentials = async (): Promise<{ success: boolean }> => {
-  return { success: true }; 
 };

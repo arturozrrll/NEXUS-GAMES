@@ -5,18 +5,17 @@ import { useGameContext } from '../store/GameContext';
 import { GameStatus, Platform } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { EditMetadataModal } from '../components/EditMetadataModal';
-import { ArrowLeft, Trash2, Calendar, Clock, Star, Gamepad2, Globe, Database, Monitor, CheckCircle, Pencil, Play, Square, Loader2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Calendar, Clock, Star, Gamepad2, Globe, Database, Monitor, CheckCircle, Pencil, Play, Square, Loader2, RefreshCcw } from 'lucide-react';
 
 export const GameDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getGame, updateEntry, removeFromLibrary, syncMetadata, isSyncing, startSession, stopSession, activeSession, launchingGameId } = useGameContext();
+  const { getGame, updateEntry, removeFromLibrary, syncMetadata, syncHLTB, isSyncing, isSyncingHLTB, startSession, stopSession, activeSession, launchingGameId } = useGameContext();
 
   const game = getGame(Number(id));
   const isPlaying = activeSession?.gameId === game?.id;
   const isLaunching = launchingGameId === game?.id;
   
-  // Local state for edits (Allow floats)
   const [playtime, setPlaytime] = useState(0);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -108,7 +107,6 @@ export const GameDetail: React.FC = () => {
                          </div>
                      )}
                      
-                     {/* STEAM BADGE */}
                      {game.steamAppId && (
                          <div className="flex items-center gap-2 bg-[#171a21] px-3 py-1.5 rounded-lg border border-[#1b2838] shadow-lg">
                              <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Steam_icon_logo.svg/2048px-Steam_icon_logo.svg.png" className="w-4 h-4" />
@@ -123,10 +121,7 @@ export const GameDetail: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-8 py-12 grid grid-cols-1 lg:grid-cols-3 gap-12">
           
-          {/* Main Content (Metadata - Immutable View) */}
           <div className="lg:col-span-2 space-y-12">
-               
-               {/* Screenshots */}
                {game.screenshots.length > 0 && (
                    <div className="space-y-4">
                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
@@ -149,30 +144,43 @@ export const GameDetail: React.FC = () => {
                    </p>
                </div>
 
-               {/* HLTB Data (Source of Truth) */}
+               {/* HLTB Data Section with Refresh Button */}
                <div className="space-y-4">
-                   <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                       <Clock className="text-brand-secondary" /> Tiempo para Completar
-                   </h3>
+                   <div className="flex items-center justify-between">
+                       <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                           <Clock className="text-brand-secondary" /> Tiempo para Completar
+                       </h3>
+                       <button 
+                         onClick={() => syncHLTB(game.id)}
+                         disabled={isSyncingHLTB}
+                         className="flex items-center gap-2 text-xs font-bold text-brand-secondary hover:text-white transition-colors bg-brand-secondary/10 px-3 py-1.5 rounded-lg border border-brand-secondary/20 disabled:opacity-50"
+                       >
+                         {isSyncingHLTB ? (
+                           <Loader2 size={14} className="animate-spin" />
+                         ) : (
+                           <RefreshCcw size={14} />
+                         )}
+                         RE-ESCANEAR HLTB
+                       </button>
+                   </div>
                    <div className="grid grid-cols-3 gap-4">
-                       <div className="bg-[#1e293b] p-6 rounded-2xl border-t-4 border-blue-500 text-center">
-                           <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Historia Principal</div>
+                       <div className="bg-[#1e293b] p-6 rounded-2xl border-t-4 border-blue-500 text-center relative overflow-hidden group">
+                           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-2">Historia Principal</div>
                            <div className="text-3xl font-black text-white">{game.timeToBeat.main || '--'}h</div>
                        </div>
-                       <div className="bg-[#1e293b] p-6 rounded-2xl border-t-4 border-purple-500 text-center">
-                           <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Historia + Extra</div>
+                       <div className="bg-[#1e293b] p-6 rounded-2xl border-t-4 border-purple-500 text-center relative overflow-hidden group">
+                           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-2">Historia + Extra</div>
                            <div className="text-3xl font-black text-white">{game.timeToBeat.extra || '--'}h</div>
                        </div>
-                       <div className="bg-[#1e293b] p-6 rounded-2xl border-t-4 border-red-500 text-center">
-                           <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Completista</div>
+                       <div className="bg-[#1e293b] p-6 rounded-2xl border-t-4 border-red-500 text-center relative overflow-hidden group">
+                           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-2">Completista</div>
                            <div className="text-3xl font-black text-white">{game.timeToBeat.completionist || '--'}h</div>
                        </div>
                    </div>
-                   <p className="text-xs text-slate-500 text-center mt-2">Datos de HowLongToBeat & Global Database</p>
+                   <p className="text-[10px] text-slate-500 text-center mt-2 uppercase tracking-widest font-bold">Datos sincronizados con HowLongToBeat</p>
                </div>
           </div>
 
-          {/* Sidebar (User Data - Mutable) */}
           <div className="space-y-6">
                <div className="bg-gradient-to-b from-slate-800 to-slate-900 p-8 rounded-3xl border border-white/10 shadow-2xl sticky top-24">
                    <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
@@ -180,8 +188,6 @@ export const GameDetail: React.FC = () => {
                    </h3>
                    
                    <div className="space-y-6">
-                       
-                       {/* Play Button */}
                        <button 
                             onClick={handleSessionToggle}
                             disabled={isLaunching}
@@ -208,7 +214,6 @@ export const GameDetail: React.FC = () => {
                             )}
                        </button>
 
-                       {/* Status */}
                        <div>
                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Estado</label>
                            <select 
@@ -220,7 +225,6 @@ export const GameDetail: React.FC = () => {
                            </select>
                        </div>
 
-                       {/* Platform */}
                        <div>
                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Plataforma</label>
                            <select 
@@ -232,7 +236,6 @@ export const GameDetail: React.FC = () => {
                            </select>
                        </div>
 
-                       {/* Hours Played */}
                        <div>
                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex justify-between">
                                Horas Jugadas
@@ -251,14 +254,13 @@ export const GameDetail: React.FC = () => {
                            </div>
                        </div>
 
-                       {/* Rating */}
                        <div>
                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Mi Nota</label>
                            <div className="flex justify-between bg-black/20 border border-white/10 rounded-xl p-3">
                                 {[1,2,3,4,5].map(star => (
                                     <button 
                                         key={star}
-                                        onClick={() => updateEntry(game.id, { userRating: star * 20 })} // Store as 0-100
+                                        onClick={() => updateEntry(game.id, { userRating: star * 20 })} 
                                         className="hover:scale-110 transition-transform"
                                     >
                                         <Star 
@@ -296,7 +298,6 @@ export const GameDetail: React.FC = () => {
                    </div>
                </div>
 
-               {/* Meta Info */}
                <div className="bg-slate-900/50 p-6 rounded-2xl border border-white/5 space-y-4">
                    <div className="flex justify-between text-sm">
                        <span className="text-slate-500">Lanzamiento</span>

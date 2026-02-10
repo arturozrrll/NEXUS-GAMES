@@ -1,4 +1,5 @@
 
+
 export enum GameStatus {
   Backlog = 'BACKLOG',
   Playing = 'PLAYING',
@@ -38,6 +39,9 @@ export interface GameMetadata {
   developers: string[];
   publishers: string[];
   
+  // Optional External IDs at root level for quick access
+  steamAppId?: number;
+
   // Scores & Metrics (Source of Truth)
   rating: number; // IGDB Rating (0-100)
   aggregatedRating: number; // Critic Rating (0-100)
