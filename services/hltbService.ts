@@ -1,7 +1,6 @@
 
 import { HLTBData } from '../types';
-// Corrected import: Type must be imported from @google/genai, not from types.ts
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
 const PROXY_URL = 'https://corsproxy.io/?'; 
 const HLTB_API = 'https://howlongtobeat.com/api/search';
@@ -33,7 +32,10 @@ const fetchFromHLTBApi = async (title: string): Promise<HLTBData | null> => {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Accept': '*/*',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Referer': 'https://howlongtobeat.com/',
+                'Origin': 'https://howlongtobeat.com'
             },
             body: JSON.stringify(payload)
         });
@@ -42,7 +44,10 @@ const fetchFromHLTBApi = async (title: string): Promise<HLTBData | null> => {
         const json = await response.json();
         
         if (json && json.data && json.data.length > 0) {
-            const best = json.data[0];
+            // Find the best match (exact title preferred)
+            const lowerTitle = title.toLowerCase();
+            const best = json.data.find((g: any) => g.game_name.toLowerCase() === lowerTitle) || json.data[0];
+            
             const toH = (s: number) => s > 0 ? Math.round(s / 3600) : 0;
             return {
                 main: toH(best.comp_main),
@@ -51,6 +56,7 @@ const fetchFromHLTBApi = async (title: string): Promise<HLTBData | null> => {
             };
         }
     } catch (e) {
+        // Silent fail for API
         return null;
     }
     return null;
@@ -58,63 +64,52 @@ const fetchFromHLTBApi = async (title: string): Promise<HLTBData | null> => {
 
 /**
  * MÉTODO B: Búsqueda con IA (Gemini + Google Search)
- * Este es el "donde sea" que garantiza resultados reales si la API falla.
  */
 const fetchFromAIGrounding = async (title: string): Promise<HLTBData | null> => {
     try {
-        // Correct initialization of GoogleGenAI using process.env.API_KEY
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const prompt = `Find the HowLongToBeat (HLTB) times for the video game "${title}". 
-        I need the "Main Story", "Main + Extra" and "Completionist" times in hours. 
-        Return ONLY a JSON object with this structure: {"main": number, "extra": number, "completionist": number}. 
-        If you are unsure, provide your best estimate based on your knowledge base.`;
+        const prompt = `Find the HowLongToBeat (HLTB) completion times for the video game "${title}". 
+        I need 3 integers representing hours: "Main Story", "Main + Extra", and "Completionist".
+        Return ONLY a JSON object like: {"main": 10, "extra": 15, "completionist": 30}.`;
 
-        // Using googleSearch for grounding as it relates to external up-to-date info (HLTB times).
-        // Using responseSchema for structured output as recommended by the guidelines.
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: prompt,
             config: {
                 tools: [{ googleSearch: {} }],
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        main: { type: Type.NUMBER },
-                        extra: { type: Type.NUMBER },
-                        completionist: { type: Type.NUMBER }
-                    },
-                    required: ["main", "extra", "completionist"]
-                }
+                responseMimeType: "application/json"
             }
         });
 
-        // Use the .text property to access the response content (not a method).
         const text = response.text?.trim();
         if (text) {
             try {
-                // Grounding with search can sometimes return non-JSON even with MIME type set.
-                const data = JSON.parse(text);
+                // Try parsing JSON directly
+                const cleanJson = text.replace(/```json|```/g, '').trim();
+                const data = JSON.parse(cleanJson);
                 return {
                     main: Number(data.main) || 0,
                     extra: Number(data.extra) || 0,
                     completionist: Number(data.completionist) || 0
                 };
             } catch (parseError) {
-                console.warn("Failed to parse JSON from AI response with grounding:", text);
-                // Fallback regex to extract numbers if JSON parsing fails
-                const hours = text.match(/\d+/g);
-                if (hours && hours.length >= 3) {
+                // Fallback regex
+                const numbers = text.match(/\d+/g)?.map(Number);
+                if (numbers && numbers.length >= 3) {
                     return {
-                        main: parseInt(hours[0]),
-                        extra: parseInt(hours[1]),
-                        completionist: parseInt(hours[2])
+                        main: numbers[0],
+                        extra: numbers[1],
+                        completionist: numbers[2]
                     };
                 }
             }
         }
-    } catch (e) {
-        console.error("AI Grounding failed:", e);
+    } catch (e: any) {
+         if (e.status === 429 || (e.message && e.message.includes('429'))) {
+            console.warn(`[HLTB AI] Quota exceeded for: ${title}`);
+         } else {
+            console.error("AI Grounding failed:", e);
+         }
     }
     return null;
 };
@@ -127,19 +122,18 @@ export const searchHLTB = async (gameTitle: string): Promise<HLTBData | null> =>
     
     // 1. Intentar API oficial (Rápido)
     const apiResult = await fetchFromHLTBApi(title);
-    if (apiResult && apiResult.main > 0) {
-        console.log(`[Nexus] HLTB Data from API for: ${title}`);
+    if (apiResult && (apiResult.main > 0 || apiResult.extra > 0)) {
+        console.log(`[Nexus] HLTB Data from API for: ${title}`, apiResult);
         return apiResult;
     }
 
-    // 2. Si falla la API (99% de los casos actuales), usar IA con búsqueda real en Google
-    // Esto buscará en la web real y extraerá los datos de HLTB.
-    console.log(`[Nexus] API Failed. Launching AI Grounding for: ${title}`);
+    // 2. Si falla la API, usar IA con búsqueda real en Google
+    console.log(`[Nexus] API Failed or Empty. Launching AI Grounding for: ${title}`);
     const aiResult = await fetchFromAIGrounding(gameTitle);
     if (aiResult) {
+        console.log(`[Nexus] HLTB Data from AI for: ${title}`, aiResult);
         return aiResult;
     }
 
-    // 3. Fallback final si todo lo anterior falla
-    return { main: 0, extra: 0, completionist: 0 };
+    return null;
 };

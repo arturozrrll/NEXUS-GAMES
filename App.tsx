@@ -9,6 +9,7 @@ import { Library } from './pages/Library';
 import { Statistics } from './pages/Statistics';
 import { GameDetail } from './pages/GameDetail';
 import { Settings } from './pages/Settings';
+import { Discover } from './pages/Discover';
 import { AddGameModal } from './components/AddGameModal';
 import { GlobalTimer } from './components/GlobalTimer';
 
@@ -58,6 +59,7 @@ const App = () => {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/library" element={<Library />} />
                 <Route path="/wishlist" element={<Library initialMode="WISHLIST" />} />
+                <Route path="/discover" element={<Discover />} />
                 <Route path="/stats" element={<Statistics />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/game/:id" element={<GameDetail />} />

@@ -1,5 +1,4 @@
 
-
 export enum GameStatus {
   Backlog = 'BACKLOG',
   Playing = 'PLAYING',
@@ -11,12 +10,16 @@ export enum GameStatus {
 }
 
 export enum Platform {
-  PC = 'PC',
+  PC = 'PC (Pirata/Generico)',
+  Steam = 'Steam',
+  Epic = 'Epic Games',
+  Amazon = 'Amazon Games',
+  GOG = 'GOG Galaxy',
+  Riot = 'Riot Games',
+  GamePass = 'Xbox Game Pass',
   PS5 = 'PlayStation 5',
-  PS4 = 'PlayStation 4',
-  XboxSeries = 'Xbox Series X/S',
+  Xbox = 'Xbox Series X/S',
   Switch = 'Nintendo Switch',
-  SteamDeck = 'Steam Deck',
   Retro = 'Retro / Emulation',
   Cloud = 'Cloud Gaming',
   Other = 'Other'
@@ -80,10 +83,12 @@ export interface UserEntry {
   userRating: number; // 0-100
   hoursPlayed: number; // Manual tracking
   notes?: string;
+  isPinned?: boolean; // NEW: Pinned to dashboard shortcuts
   
   // Launch Configuration
   steamAppId?: number;     // Official Steam ID
   customLaunchUrl?: string; // NEW: Custom protocol or URL (e.g. battlenet://)
+  launchDelay?: number;    // NEW: Custom launch delay in seconds (Default 20)
   
   // Steam Integration Stats
   steamPlaytime?: number; // Minutes from Steam

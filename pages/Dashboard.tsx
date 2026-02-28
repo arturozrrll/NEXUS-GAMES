@@ -5,11 +5,11 @@ import { GameStatus, Game } from '../types';
 import { GameCard } from '../components/GameCard';
 import { GameContextMenu } from '../components/GameContextMenu';
 import { EditMetadataModal } from '../components/EditMetadataModal';
-import { ArrowRight, Flame, Clock, Trophy, Plus, Gamepad, Activity, Play, Loader2, Search, X } from 'lucide-react';
+import { ArrowRight, Flame, Clock, Trophy, Plus, Gamepad, Activity, Play, Loader2, Search, X, Layers, Zap, Pin, Hourglass } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const Dashboard: React.FC = () => {
-  const { library, isLoading, openAddModal, startSession, stopSession, activeSession, launchingGameId, removeFromLibrary, searchQuery, setSearchQuery } = useGameContext();
+  const { library, isLoading, openAddModal, startSession, stopSession, cancelLaunch, activeSession, launchingGameId, removeFromLibrary, searchQuery, setSearchQuery, heroGameId, getGame } = useGameContext();
   const navigate = useNavigate();
 
   // Context Menu State
@@ -23,27 +23,30 @@ export const Dashboard: React.FC = () => {
 
   // EXCLUDE WISHLIST FROM OWNED LIBRARY CALCULATIONS
   const ownedGames = library.filter(g => g.status !== GameStatus.Wishlist);
+  const pinnedGames = library.filter(g => g.isPinned);
 
   const playingNow = library.filter(g => g.status === GameStatus.Playing);
+  const backlogCount = library.filter(g => g.status === GameStatus.Backlog).length;
   const completed = library.filter(g => g.status === GameStatus.Completed || g.status === GameStatus.Platinums).length;
   
   // Calculate total playtime ONLY for owned games
   const totalPlaytime = ownedGames.reduce((acc, curr) => acc + (curr.hoursPlayed || 0), 0).toFixed(1);
   
   // LOGIC CHANGE: Sort by lastInteractedAt (Activity) instead of addedAt
+  // FILTER CHANGE: Exclude pinned games from recents to avoid duplicates
   // INCREASED LIMIT TO 12 (6 cols x 2 rows)
   const recentGames = [...ownedGames]
+    .filter(g => !g.isPinned) // Exclude shortcuts
     .sort((a, b) => (b.lastInteractedAt || b.addedAt || 0) - (a.lastInteractedAt || a.addedAt || 0))
     .slice(0, 12);
 
   const isSearchActive = searchQuery.length > 0;
 
-  // RANDOM HERO GAME ON MOUNT (Filtered by search if active, which is fine)
+  // HERO GAME LOGIC (Now retrieved from Context to remain static during session)
   const heroGame = useMemo(() => {
-     if (playingNow.length === 0) return null;
-     const randomIndex = Math.floor(Math.random() * playingNow.length);
-     return playingNow[randomIndex];
-  }, [playingNow.length]);
+     if (!heroGameId) return null;
+     return getGame(heroGameId) || null;
+  }, [heroGameId, getGame]);
 
   if (isLoading) return (
       <div className="h-screen flex items-center justify-center">
@@ -53,7 +56,11 @@ export const Dashboard: React.FC = () => {
 
   const handleHeroPlay = (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (heroGame) startSession(heroGame.id);
+      if (launchingGameId === heroGame?.id) {
+          cancelLaunch();
+      } else if (heroGame) {
+          startSession(heroGame.id);
+      }
   }
 
   const handleContextMenu = (e: React.MouseEvent, game: Game) => {
@@ -144,7 +151,7 @@ export const Dashboard: React.FC = () => {
         <div className="relative w-full h-[50vh] min-h-[400px] rounded-[40px] overflow-hidden group border border-white/5 shadow-2xl">
           <img 
             src={heroGame.bannerUrl} 
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-[20s] ease-linear"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-[20s] ease-linear transform-gpu will-change-transform"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-[#020617] via-[#020617]/80 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent" />
@@ -163,12 +170,15 @@ export const Dashboard: React.FC = () => {
             <div className="flex items-center gap-6 animate-slide-up" style={{animationDelay: '0.3s'}}>
               <button 
                 onClick={handleHeroPlay}
-                disabled={launchingGameId === heroGame.id}
-                className="bg-brand-primary text-white px-8 py-4 rounded-2xl font-black hover:bg-brand-primary/90 transition-colors flex items-center gap-2 shadow-[0_0_30px_rgba(99,102,241,0.3)] hover:scale-105 active:scale-95 transform"
+                className={`px-8 py-4 rounded-2xl font-black transition-colors flex items-center gap-2 shadow-[0_0_30px_rgba(99,102,241,0.3)] hover:scale-105 active:scale-95 transform ${
+                    launchingGameId === heroGame.id 
+                    ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/30' 
+                    : 'bg-brand-primary text-white hover:bg-brand-primary/90'
+                }`}
               >
                  {launchingGameId === heroGame.id ? (
                      <>
-                        <Loader2 className="animate-spin" size={24} /> LANZANDO...
+                        <X size={20} strokeWidth={3} /> CANCELAR
                      </>
                  ) : (
                      <>
@@ -201,38 +211,91 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* KPI Stats (Always visible unless search filters everything out, which is fine) */}
+      {/* KPI Stats (Always visible unless search filters everything out) */}
       {!isSearchActive && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-slate-900/50 backdrop-blur-sm border border-white/5 p-6 rounded-3xl flex flex-col justify-between hover:border-white/10 transition-colors group">
-                  <Clock className="text-slate-500 mb-4 group-hover:text-brand-primary transition-colors" size={24} />
-                  <div>
-                      <h4 className="text-3xl font-black text-white">{totalPlaytime}<span className="text-sm font-medium text-slate-500 ml-1">h</span></h4>
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tiempo Total</p>
-                  </div>
+          <div className="space-y-4">
+              {/* Header con Tiempo Total (Nuevo Ubicación Mejorada) */}
+              <div className="flex items-center justify-between px-2">
+                 <h3 className="text-lg font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    Resumen de Biblioteca
+                 </h3>
+                 <div className="flex items-center gap-3 bg-brand-primary/10 border border-brand-primary/20 px-4 py-2 rounded-full cursor-pointer hover:bg-brand-primary/20 transition-colors" onClick={() => navigate('/stats')}>
+                     <Clock size={16} className="text-brand-primary" />
+                     <span className="text-brand-primary font-black text-lg leading-none">{totalPlaytime}<span className="text-xs ml-0.5">h</span></span>
+                     <span className="text-[10px] text-brand-primary/70 font-bold uppercase tracking-wide border-l border-brand-primary/20 pl-3">Tiempo Total</span>
+                 </div>
               </div>
-              <div className="bg-slate-900/50 backdrop-blur-sm border border-white/5 p-6 rounded-3xl flex flex-col justify-between hover:border-white/10 transition-colors group">
-                  <Trophy className="text-slate-500 mb-4 group-hover:text-yellow-400 transition-colors" size={24} />
-                  <div>
-                      <h4 className="text-3xl font-black text-white">{completed}</h4>
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Completados</p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  
+                  {/* 1. JUEGOS TOTALES -> LIBRARY ALL */}
+                  <div 
+                      onClick={() => navigate('/library?view=All')}
+                      className="bg-slate-900/50 backdrop-blur-sm border border-white/5 p-6 rounded-3xl flex flex-col justify-between hover:border-blue-400/50 hover:bg-slate-800 transition-all group cursor-pointer"
+                  >
+                      <Layers className="text-slate-500 mb-4 group-hover:text-blue-400 transition-colors" size={24} />
+                      <div>
+                          <h4 className="text-3xl font-black text-white">{ownedGames.length}</h4>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider group-hover:text-white transition-colors">En Propiedad</p>
+                      </div>
                   </div>
-              </div>
-              <div className="bg-slate-900/50 backdrop-blur-sm border border-white/5 p-6 rounded-3xl flex flex-col justify-between hover:border-white/10 transition-colors group">
-                  <Gamepad className="text-slate-500 mb-4 group-hover:text-green-400 transition-colors" size={24} />
-                  <div>
-                      <h4 className="text-3xl font-black text-white">{ownedGames.length}</h4>
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">En Propiedad</p>
+
+                  {/* 2. PENDIENTES -> BACKLOG (NUEVO) */}
+                  <div 
+                      onClick={() => navigate(`/library?view=${GameStatus.Backlog}`)}
+                      className="bg-slate-900/50 backdrop-blur-sm border border-white/5 p-6 rounded-3xl flex flex-col justify-between hover:border-cyan-400/50 hover:bg-slate-800 transition-all group cursor-pointer"
+                  >
+                      <Hourglass className="text-slate-500 mb-4 group-hover:text-cyan-400 transition-colors" size={24} />
+                      <div>
+                          <h4 className="text-3xl font-black text-white">{backlogCount}</h4>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider group-hover:text-white transition-colors">Pendientes</p>
+                      </div>
                   </div>
-              </div>
-              <div 
-                onClick={openAddModal}
-                className="bg-brand-primary/10 border border-brand-primary/20 p-6 rounded-3xl flex flex-col items-center justify-center cursor-pointer hover:bg-brand-primary/20 transition-all group"
-              >
-                  <div className="w-12 h-12 rounded-full bg-brand-primary text-white flex items-center justify-center shadow-lg shadow-brand-primary/30 group-hover:scale-110 transition-transform">
-                      <Plus size={24} />
+
+                  {/* 3. COMPLETADOS -> LIBRARY COMPLETED */}
+                  <div 
+                      onClick={() => navigate(`/library?view=${GameStatus.Completed}`)}
+                      className="bg-slate-900/50 backdrop-blur-sm border border-white/5 p-6 rounded-3xl flex flex-col justify-between hover:border-yellow-400/50 hover:bg-slate-800 transition-all group cursor-pointer"
+                  >
+                      <Trophy className="text-slate-500 mb-4 group-hover:text-yellow-400 transition-colors" size={24} />
+                      <div>
+                          <h4 className="text-3xl font-black text-white">{completed}</h4>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider group-hover:text-white transition-colors">Completados</p>
+                      </div>
                   </div>
+
+                  {/* 4. JUGANDO -> LIBRARY PLAYING */}
+                  <div 
+                      onClick={() => navigate(`/library?view=${GameStatus.Playing}`)}
+                      className="bg-slate-900/50 backdrop-blur-sm border border-white/5 p-6 rounded-3xl flex flex-col justify-between hover:border-green-400/50 hover:bg-slate-800 transition-all group cursor-pointer"
+                  >
+                      <Zap className="text-slate-500 mb-4 group-hover:text-green-400 transition-colors" size={24} />
+                      <div>
+                          <h4 className="text-3xl font-black text-white">{playingNow.length}</h4>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider group-hover:text-white transition-colors">Jugando</p>
+                      </div>
+                  </div>
+
               </div>
+          </div>
+      )}
+      
+      {/* SECTION: SHORTCUTS (ACCESOS DIRECTOS) - VISIBLE ONLY IF GAMES PINNED */}
+      {!isSearchActive && pinnedGames.length > 0 && (
+          <div>
+             <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-6">
+                 <Pin className="text-brand-accent" size={20} /> Accesos Directos
+             </h2>
+             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                 {pinnedGames.map(game => (
+                    <GameCard 
+                        key={game.id} 
+                        game={game} 
+                        onClick={(id) => navigate(`/game/${id}`)}
+                        onContextMenu={handleContextMenu}
+                    />
+                 ))}
+             </div>
           </div>
       )}
 

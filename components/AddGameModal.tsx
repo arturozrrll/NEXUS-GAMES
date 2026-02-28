@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
 /* Added missing Sparkles icon to imports */
-import { Search, X, Loader2, Plus, CheckCircle, AlertCircle, Calendar, Database, Clock, Zap, Sparkles } from 'lucide-react';
+import { Search, X, Loader2, Plus, CheckCircle, AlertCircle, Calendar, Database, Clock, Zap, Sparkles, Link as LinkIcon, DownloadCloud } from 'lucide-react';
 import { useGameContext } from '../store/GameContext';
-import { fetchMetadata, searchGlobalGames } from '../services/metadataService';
+import { fetchMetadata, searchGlobalGames, searchGameBySteamId, searchGameBySlug } from '../services/metadataService';
 import { GameMetadata, GameStatus, Platform } from '../types';
+import { PLATFORM_ICONS } from '../constants';
 
 export const AddGameModal: React.FC = () => {
-  const { isAddModalOpen, closeAddModal, addToLibrary } = useGameContext();
+  const { isAddModalOpen, closeAddModal, addToLibrary, library } = useGameContext();
   
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Partial<GameMetadata>[]>([]);
@@ -15,6 +16,7 @@ export const AddGameModal: React.FC = () => {
   const [isFetchingDetails, setIsFetchingDetails] = useState(false);
   const [isAdding, setIsAdding] = useState(false); 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [detectedLinkType, setDetectedLinkType] = useState<'STEAM' | 'IGDB' | null>(null);
   
   const [selectedGame, setSelectedGame] = useState<Partial<GameMetadata> | null>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<string>(Platform.PC);
@@ -27,12 +29,32 @@ export const AddGameModal: React.FC = () => {
           setResults([]);
           setSelectedGame(null);
           setIsAdding(false);
+          setDetectedLinkType(null);
       }
   }, [isAddModalOpen]);
 
   useEffect(() => {
+    // 1. LINK DETECTION LOGIC (Immediate execution, no debounce)
+    const steamMatch = query.match(/store\.steampowered\.com\/app\/(\d+)/);
+    const igdbMatch = query.match(/igdb\.com\/games\/([\w-]+)/);
+
+    if (steamMatch) {
+        setDetectedLinkType('STEAM');
+        handleDirectLinkSearch('STEAM', steamMatch[1]);
+        return;
+    } 
+    
+    if (igdbMatch) {
+        setDetectedLinkType('IGDB');
+        handleDirectLinkSearch('IGDB', igdbMatch[1]);
+        return;
+    }
+
+    setDetectedLinkType(null);
+
+    // 2. STANDARD SEARCH (Debounced)
     const delayDebounceFn = setTimeout(async () => {
-      if (query.length > 1) {
+      if (query.length > 1 && !steamMatch && !igdbMatch) {
         setIsLoading(true);
         setErrorMsg(null);
         try {
@@ -43,12 +65,42 @@ export const AddGameModal: React.FC = () => {
         } finally {
           setIsLoading(false);
         }
-      } else {
+      } else if (query.length <= 1) {
         setResults([]);
       }
     }, 500);
+    
     return () => clearTimeout(delayDebounceFn);
   }, [query]);
+
+  const handleDirectLinkSearch = async (type: 'STEAM' | 'IGDB', identifier: string) => {
+      setIsLoading(true);
+      setErrorMsg(null);
+      setResults([]); // Clear previous text results
+      
+      try {
+          let data: Partial<GameMetadata>[] = [];
+          if (type === 'STEAM') {
+              data = await searchGameBySteamId(identifier);
+          } else {
+              data = await searchGameBySlug(identifier);
+          }
+
+          if (data.length === 0) {
+              setErrorMsg("No se encontró el juego en la base de datos de IGDB asociado a este enlace.");
+          } else {
+              setResults(data);
+              // Auto-select if valid result found
+              if (data.length === 1 && data[0].id) {
+                  handleSelect(data[0].id);
+              }
+          }
+      } catch (e) {
+          setErrorMsg("Error al resolver el enlace directo.");
+      } finally {
+          setIsLoading(false);
+      }
+  };
 
   const handleSelect = async (gameId: number) => {
     const partial = results.find(r => r.id === gameId);
@@ -65,17 +117,6 @@ export const AddGameModal: React.FC = () => {
     }
   };
 
-  const handleConfirm = async () => {
-    if (selectedGame && selectedGame.id) {
-        setIsAdding(true);
-        const meta = selectedGame as GameMetadata;
-        // La sincronización de HLTB ahora ocurre internamente en addToLibrary de forma asíncrona
-        await addToLibrary(meta.id, selectedStatus, selectedPlatform, meta);
-        setIsAdding(false);
-        closeAddModal();
-    }
-  };
-
   const translateStatus = (status: GameStatus) => {
       const map: Record<GameStatus, string> = {
           [GameStatus.Backlog]: 'Pendiente',
@@ -88,6 +129,31 @@ export const AddGameModal: React.FC = () => {
       };
       return map[status] || status;
   }
+
+  const handleConfirm = async () => {
+    if (selectedGame && selectedGame.id) {
+        // 1. Check Exact Duplicate (Same ID)
+        const exactMatch = library.find(g => g.id === selectedGame.id);
+        if (exactMatch) {
+            alert(`¡Ya tienes este juego en tu biblioteca!\n\n"${exactMatch.title}"\nEstado: ${translateStatus(exactMatch.status)}`);
+            return;
+        }
+
+        // 2. Check Name Duplicate (Different ID)
+        const nameMatch = library.find(g => g.title.toLowerCase() === selectedGame.title?.toLowerCase());
+        if (nameMatch) {
+            const proceed = confirm(`AVISO DE DUPLICIDAD\n\nYa tienes un juego llamado "${nameMatch.title}" en tu biblioteca (ID Diferente).\n\n¿Estás seguro de que deseas añadir esta versión de todos modos?`);
+            if (!proceed) return;
+        }
+
+        setIsAdding(true);
+        const meta = selectedGame as GameMetadata;
+        // La sincronización de HLTB ahora ocurre internamente en addToLibrary de forma asíncrona
+        await addToLibrary(meta.id, selectedStatus, selectedPlatform, meta);
+        setIsAdding(false);
+        closeAddModal();
+    }
+  };
 
   if (!isAddModalOpen) return null;
 
@@ -102,7 +168,7 @@ export const AddGameModal: React.FC = () => {
             <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
                Añadir Juego <Database className="text-brand-primary" />
             </h2>
-            <p className="text-sm text-slate-400 font-medium">Motor: IGDB v4 (Instantáneo)</p>
+            <p className="text-sm text-slate-400 font-medium">Motor: IGDB v4 (Texto o Enlaces Directos)</p>
           </div>
           <button onClick={closeAddModal} className="p-3 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
             <X size={24} />
@@ -113,12 +179,21 @@ export const AddGameModal: React.FC = () => {
             <div className={`flex-1 flex flex-col border-r border-white/5 transition-all ${selectedGame ? 'w-1/2 hidden md:flex' : 'w-full'}`}>
                 <div className="p-6">
                     <div className="relative group">
-                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                        {detectedLinkType === 'STEAM' ? (
+                            <div className="absolute left-5 top-1/2 -translate-y-1/2">
+                                {PLATFORM_ICONS[Platform.Steam]}
+                            </div>
+                        ) : detectedLinkType === 'IGDB' ? (
+                            <LinkIcon className="absolute left-5 top-1/2 -translate-y-1/2 text-brand-secondary" size={20} />
+                        ) : (
+                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                        )}
+                        
                         <input 
                             autoFocus
                             type="text" 
-                            className="w-full bg-slate-900 border border-white/10 rounded-2xl py-4 pl-14 pr-4 text-white text-lg placeholder:text-slate-600 focus:outline-none focus:border-brand-primary/50 transition-all"
-                            placeholder="Buscar en IGDB..."
+                            className={`w-full bg-slate-900 border rounded-2xl py-4 pl-14 pr-4 text-white text-lg placeholder:text-slate-600 focus:outline-none transition-all ${detectedLinkType ? 'border-brand-primary shadow-[0_0_15px_rgba(99,102,241,0.2)]' : 'border-white/10 focus:border-brand-primary/50'}`}
+                            placeholder="Buscar nombre o pegar enlace de Steam/IGDB..."
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                         />
@@ -128,6 +203,11 @@ export const AddGameModal: React.FC = () => {
                             </div>
                         )}
                     </div>
+                    {detectedLinkType && (
+                        <p className="mt-2 text-xs font-bold text-brand-primary animate-pulse ml-2 flex items-center gap-1">
+                            <DownloadCloud size={12} /> Detectado enlace de {detectedLinkType} - Resolviendo metadatos...
+                        </p>
+                    )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 pt-0 space-y-3 custom-scrollbar">

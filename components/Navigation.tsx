@@ -7,7 +7,8 @@ import {
   PlusCircle,
   Gamepad2,
   Settings,
-  Heart
+  Heart,
+  Sparkles
 } from 'lucide-react';
 import { useLocation, Link } from 'react-router-dom';
 import { useGameContext } from '../store/GameContext';
@@ -22,6 +23,7 @@ export const Navigation: React.FC = () => {
     { path: '/', icon: <LayoutDashboard size={20} />, label: 'Inicio' },
     { path: '/library', icon: <Library size={20} />, label: 'Biblioteca' },
     { path: '/wishlist', icon: <Heart size={20} className="text-pink-500" />, label: 'Lista de Deseos' },
+    { path: '/discover', icon: <Sparkles size={20} className="text-purple-400" />, label: 'Descubrir' },
     { path: '/stats', icon: <BarChart3 size={20} />, label: 'Estadísticas' },
     { path: '/settings', icon: <Settings size={20} />, label: 'Ajustes' },
   ];
