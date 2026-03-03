@@ -47,7 +47,7 @@ export const getDiscoveryRecommendations = async (): Promise<AIRecommendation> =
         `;
 
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-flash-latest",
             contents: prompt,
             config: {
                 tools: [{ googleSearch: {} }], // ENABLE REAL-TIME SEARCH
@@ -142,7 +142,7 @@ export const getReleaseDateWithAI = async (gameTitle: string): Promise<string | 
         JSON format: { "date": "YYYY-MM-DD" }`;
 
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-flash-latest",
             contents: prompt,
             config: {
                 tools: [{ googleSearch: {} }],

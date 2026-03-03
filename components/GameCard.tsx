@@ -104,10 +104,18 @@ export const GameCard: React.FC<GameCardProps> = memo(({ game, onClick, onContex
              )}
         </div>
 
-        {/* Rating Badge */}
-        <div className="absolute top-3 right-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        {/* Rating Badges */}
+        <div className="absolute top-3 right-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col gap-2 items-end">
+             {/* User Rating (1-10) */}
+             {game.rating10 > 0 && (
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-brand-primary border border-brand-primary/50 text-white text-sm font-black shadow-lg backdrop-blur-md animate-pulse-subtle">
+                    {game.rating10}
+                </div>
+             )}
+
+             {/* Metacritic Rating */}
              {game.aggregatedRating > 0 && (
-                <div className={`flex items-center justify-center w-8 h-8 rounded-full border text-xs font-bold backdrop-blur-md shadow-lg ${
+                <div className={`flex items-center justify-center w-8 h-8 rounded-full border text-[10px] font-bold backdrop-blur-md shadow-lg ${
                     game.aggregatedRating >= 80 ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 
                     game.aggregatedRating >= 60 ? 'bg-yellow-900/80 border-yellow-500 text-yellow-400' : 'bg-slate-800/80 border-slate-600 text-slate-300'
                 }`}>

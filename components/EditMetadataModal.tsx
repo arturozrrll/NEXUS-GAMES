@@ -191,7 +191,7 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = ({ game, isOp
                   if (result && (result.main > 0 || result.extra > 0)) {
                       saveMetadata(fullMeta.id, { timeToBeat: result });
                   }
-              }).catch(console.warn);
+              }).catch(() => {});
           }
 
           onClose();

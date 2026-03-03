@@ -222,7 +222,7 @@ export const GameProvider = ({ children }: { children?: ReactNode }) => {
             if (result && (result.main > 0 || result.extra > 0)) {
                 saveMetadata(gameId, { timeToBeat: result });
             }
-        }).catch(err => console.warn("Background HLTB Sync failed", err));
+        }).catch(() => {});
     }
   };
 

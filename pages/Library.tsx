@@ -177,6 +177,7 @@ export const Library: React.FC<LibraryProps> = ({ initialMode }) => {
      return result.sort((a, b) => {
         switch (sortBy) {
           case 'rating': return (b.aggregatedRating || 0) - (a.aggregatedRating || 0);
+          case 'userRating': return (b.rating10 || 0) - (a.rating10 || 0);
           case 'playtime': return (b.hoursPlayed || 0) - (a.hoursPlayed || 0);
           case 'release': return new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime();
           case 'name': return a.title.localeCompare(b.title);

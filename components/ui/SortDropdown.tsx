@@ -10,6 +10,7 @@ interface SortDropdownProps {
 
 const OPTIONS: { label: string; value: SortOption }[] = [
   { label: 'Recientes', value: 'recent' },
+  { label: 'Mi Nota', value: 'userRating' },
   { label: 'Mejor Valorados (IGDB)', value: 'rating' },
   { label: 'Más Jugados', value: 'playtime' },
   { label: 'Nombre (A-Z)', value: 'name' },

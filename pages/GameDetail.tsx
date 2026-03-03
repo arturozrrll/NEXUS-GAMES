@@ -6,8 +6,9 @@ import { GameStatus, Platform, Game } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { EditMetadataModal } from '../components/EditMetadataModal';
 import { UpdateMetadataModal } from '../components/UpdateMetadataModal'; 
+import { ShareStoryModal } from '../components/ShareStoryModal';
 import { fetchMetadata } from '../services/metadataService';
-import { ArrowLeft, Trash2, Clock, Star, Monitor, CheckCircle, Pencil, Play, Square, Loader2, RefreshCcw, Database, Plus, X } from 'lucide-react';
+import { ArrowLeft, Trash2, Clock, Star, Monitor, CheckCircle, Pencil, Play, Square, Loader2, RefreshCcw, Database, Plus, X, MessageSquare, Instagram, Share2 } from 'lucide-react';
 import { PLATFORM_ICONS } from '../constants';
 
 export const GameDetail: React.FC = () => {
@@ -32,6 +33,7 @@ export const GameDetail: React.FC = () => {
   const [playtime, setPlaytime] = useState(0);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false); 
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false); 
 
   // Fetch Metadata if not in Library (Preview Mode)
   useEffect(() => {
@@ -139,6 +141,11 @@ export const GameDetail: React.FC = () => {
                     saveMetadata(game.id, newData);
                     setIsUpdateModalOpen(false);
                 }}
+            />
+            <ShareStoryModal 
+                game={game}
+                isOpen={isShareModalOpen}
+                onClose={() => setIsShareModalOpen(false)}
             />
         </>
       )}
@@ -281,6 +288,55 @@ export const GameDetail: React.FC = () => {
                    </div>
                    <p className="text-[10px] text-slate-500 text-center uppercase tracking-widest font-bold opacity-60">Datos sincronizados con HowLongToBeat</p>
                </div>
+
+               {/* Review & Share Section */}
+               {isOwned && (
+                   <div className="bg-slate-900/40 p-8 md:p-10 rounded-[32px] border border-white/5 space-y-8">
+                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                           <h3 className="text-2xl font-black text-white flex items-center gap-3">
+                               <MessageSquare className="text-brand-primary" /> Reseña y Crítica
+                           </h3>
+                           <button 
+                               onClick={() => setIsShareModalOpen(true)}
+                               className="px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 hover:scale-105 transition-all shadow-lg shadow-pink-600/20"
+                           >
+                               <Instagram size={18} /> COMPARTIR STORY
+                           </button>
+                       </div>
+
+                       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+                           {/* Score Input */}
+                           <div className="md:col-span-3">
+                               <label className="block text-xs font-bold text-slate-500 uppercase mb-3 ml-1">Tu Nota (1-10)</label>
+                               <div className="relative group">
+                                   <input 
+                                       type="number" 
+                                       min="1" 
+                                       max="10"
+                                       step="0.5"
+                                       value={game.rating10 || ''}
+                                       onChange={(e) => updateEntry(game.id, { rating10: parseFloat(e.target.value) })}
+                                       placeholder="0.0"
+                                       className="w-full bg-slate-950 border border-white/10 rounded-2xl p-6 text-5xl font-black text-brand-primary focus:ring-2 focus:ring-brand-primary/50 outline-none transition-all text-center"
+                                   />
+                                   <span className="absolute right-4 bottom-4 text-[10px] font-black text-slate-600 uppercase">/ 10</span>
+                               </div>
+                           </div>
+
+                           {/* Review Input */}
+                           <div className="md:col-span-9">
+                               <label className="block text-xs font-bold text-slate-500 uppercase mb-3 ml-1">Tu Reseña</label>
+                               <textarea 
+                                   rows={4}
+                                   value={game.review || ''}
+                                   onChange={(e) => updateEntry(game.id, { review: e.target.value })}
+                                   placeholder="Escribe lo que te ha parecido el juego..."
+                                   className="w-full bg-slate-950 border border-white/10 rounded-2xl p-6 text-slate-200 text-lg font-medium focus:ring-2 focus:ring-brand-primary/50 outline-none transition-all resize-none h-full"
+                               />
+                           </div>
+                       </div>
+                   </div>
+               )}
             </div>
 
             {/* Right Column (Sidebar Actions) */}
@@ -365,24 +421,6 @@ export const GameDetail: React.FC = () => {
                                            className="w-full bg-slate-950 border border-white/10 rounded-xl p-4 text-3xl font-mono font-bold text-white focus:ring-2 focus:ring-brand-primary/50 group-hover:border-white/20 transition-colors"
                                        />
                                        <span className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-600 font-bold text-xs pointer-events-none">HORAS</span>
-                                   </div>
-                               </div>
-
-                               <div>
-                                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block ml-1">Valoración Personal</label>
-                                   <div className="flex justify-between bg-slate-950 border border-white/10 rounded-xl p-4">
-                                        {[1,2,3,4,5].map(star => (
-                                            <button 
-                                                key={star}
-                                                onClick={() => updateEntry(game.id, { userRating: star * 20 })} 
-                                                className="hover:scale-125 transition-transform p-1"
-                                            >
-                                                <Star 
-                                                    size={28} 
-                                                    className={game.userRating >= star * 20 ? "fill-yellow-400 text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]" : "text-slate-800"}
-                                                />
-                                            </button>
-                                        ))}
                                    </div>
                                </div>
                            </div>

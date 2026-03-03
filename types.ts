@@ -81,8 +81,10 @@ export interface UserEntry {
   
   // User Metrics
   userRating: number; // 0-100
+  rating10?: number; // 1-10
   hoursPlayed: number; // Manual tracking
   notes?: string;
+  review?: string;
   isPinned?: boolean; // NEW: Pinned to dashboard shortcuts
   
   // Launch Configuration
@@ -108,7 +110,7 @@ export interface Game extends GameMetadata, Omit<UserEntry, 'gameId' | 'userId'>
   // This is the combined object for easier UI consumption
 }
 
-export type SortOption = 'recent' | 'rating' | 'release' | 'playtime' | 'name' | 'status';
+export type SortOption = 'recent' | 'rating' | 'userRating' | 'release' | 'playtime' | 'name' | 'status';
 
 export interface User {
   id: string;
